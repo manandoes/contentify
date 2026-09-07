@@ -1,0 +1,29 @@
+name: Collector (raw_signals)
+
+# Phase 2 — polls sources every 20 minutes. Runs on GitHub Actions rather
+# than Vercel Cron because Vercel Hobby caps cron at once/day; this is free
+# and has no such cap. See docs/Architecture.md §3 and the plan's locked
+# scheduling decision.
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 2 verification
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/ideas/collect
+        run: |
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/ideas/collect" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "HTTP $status"
+          cat /tmp/body.txt
+          if [ "$status" -ge 300 ]; then
+            echo "::error::collect route returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
