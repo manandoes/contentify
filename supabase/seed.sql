@@ -27,3 +27,26 @@ insert into platforms (id, display_name, supports_publishing) values
   ('email',     'Email',          false),
   ('blog',      'Blog',           false)
 on conflict (id) do nothing;
+
+-- Phase 3 prerequisite: tracked_competitors seed. These four are real,
+-- verified-live placeholders (well-known tools/creators in the
+-- social-scheduling / build-in-public content space) so the Researcher's
+-- competitor-recency check has something to run against out of the box —
+-- same spirit as services/collector/generalFeeds.ts. Swap these for the
+-- founder's actual direct competitors and adjacent creators before
+-- production use. Every feed_url below was curl-verified to resolve to a
+-- real RSS/Atom feed (200, XML content-type), never scraped (Rules.md §1.7).
+insert into tracked_competitors (brand_id, name, handle_or_url, feed_url, manual_only)
+select b.id, c.name, c.handle_or_url, c.feed_url, false
+from brands b
+cross join (
+  values
+    ('Buffer',              'https://buffer.com',                 'https://buffer.com/resources/rss/'),
+    ('Typefully',           'https://typefully.com',               'https://typefully.com/blog/rss.xml'),
+    ('Publer',               'https://publer.io',                   'https://publer.io/blog/feed/'),
+    ('Lenny''s Newsletter', 'https://www.lennysnewsletter.com',    'https://www.lennysnewsletter.com/feed')
+) as c(name, handle_or_url, feed_url)
+where b.name = 'Contentify'
+  and not exists (
+    select 1 from tracked_competitors tc where tc.brand_id = b.id and tc.name = c.name
+  );

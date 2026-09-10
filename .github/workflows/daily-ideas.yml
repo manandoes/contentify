@@ -1,0 +1,72 @@
+name: Idea engine (briefs -> hooks -> finalize)
+
+# Phase 3 — runs the three idea-engine agent stages once daily, in
+# sequence, sharing one run_id captured from the research stage's
+# response. Separate endpoints per stage (rather than one route calling
+# all three) per docs/Implementationplan.md's locked decision: three
+# sequential Gemini calls risk Vercel's function timeout, and splitting
+# them across an HTTP boundary makes the one-job rule structural.
+on:
+  schedule:
+    - cron: "0 13 * * *" # once daily, 13:00 UTC
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 3 verification
+
+jobs:
+  run-idea-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Research -> briefs
+        id: research
+        run: |
+          status=$(curl -s -o /tmp/research.json -w "%{http_code}" \
+            -X POST "${APP_URL}/api/ideas/research" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/research.json
+          if [ "$status" -ge 300 ]; then
+            echo "::error::research stage returned $status"
+            exit 1
+          fi
+          run_id=$(jq -r '.runId' /tmp/research.json)
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Hooks -> hooks
+        run: |
+          status=$(curl -s -o /tmp/hooks.json -w "%{http_code}" \
+            -X POST "${APP_URL}/api/ideas/hooks" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"runId\": \"${RUN_ID}\"}")
+          echo "HTTP $status"
+          cat /tmp/hooks.json
+          if [ "$status" -ge 300 ]; then
+            echo "::error::hooks stage returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RUN_ID: ${{ steps.research.outputs.run_id }}
+
+      - name: Finalize -> ingestion object
+        run: |
+          status=$(curl -s -o /tmp/finalize.json -w "%{http_code}" \
+            -X POST "${APP_URL}/api/ideas/finalize" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"runId\": \"${RUN_ID}\"}")
+          echo "HTTP $status"
+          cat /tmp/finalize.json
+          if [ "$status" -ge 300 ]; then
+            echo "::error::finalize stage returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RUN_ID: ${{ steps.research.outputs.run_id }}

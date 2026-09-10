@@ -25,6 +25,13 @@ const serverEnvSchema = z.object({
   ALLOWED_FOUNDER_EMAIL: z.email(),
   AUTO_PUBLISH: boolFromString,
   HUMAN_APPROVAL_REQUIRED: boolFromString,
+  // Optional: Reddit blocks unauthenticated requests to its public .json
+  // endpoints (verified directly — 403 even with a descriptive User-Agent).
+  // Without these, services/collector/reddit.ts no-ops rather than emitting
+  // a fake "0 results" success. Create a "script" app at
+  // reddit.com/prefs/apps to get these.
+  REDDIT_CLIENT_ID: z.string().min(1).optional(),
+  REDDIT_CLIENT_SECRET: z.string().min(1).optional(),
 });
 
 const publicEnvSchema = z.object({
@@ -63,6 +70,8 @@ const serverEnv = isServer
       ALLOWED_FOUNDER_EMAIL: process.env.ALLOWED_FOUNDER_EMAIL,
       AUTO_PUBLISH: process.env.AUTO_PUBLISH,
       HUMAN_APPROVAL_REQUIRED: process.env.HUMAN_APPROVAL_REQUIRED,
+      REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID,
+      REDDIT_CLIENT_SECRET: process.env.REDDIT_CLIENT_SECRET,
     })
   : null;
 
@@ -106,6 +115,14 @@ export const config = {
   cron: {
     get secret() {
       return requireServer().CRON_SECRET;
+    },
+  },
+  reddit: {
+    get clientId() {
+      return requireServer().REDDIT_CLIENT_ID;
+    },
+    get clientSecret() {
+      return requireServer().REDDIT_CLIENT_SECRET;
     },
   },
   auth: {

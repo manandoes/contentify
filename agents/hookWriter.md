@@ -7,8 +7,8 @@ GOAL: Produce hooks that earn attention honestly — no clichés, no emojis, no 
 that read as this founder's own take, not a copy of what's already circulating.
 INPUT: one ranked opening (with its evidence and its competitor_recency flag) from briefs.md.
 RULES: Draft 10 hooks. Cut to the 3 strongest survivors. For each survivor, give a one-line rationale
-for why it works. Never use a cliché opener ("You won't believe...", "Here's the thing..."). Never
-use emojis. Never claim something the evidence doesn't support.
+for why it works. Never use a cliché opener ("You won't believe...", "Here's the thing...", "Imagine if...",
+"What if I told you..."). Never use emojis. Never claim something the evidence doesn't support.
 IF competitor_recency is "trending": write at least one survivor that explicitly rides the live moment
 ("everyone's covering X right now, here's the part they're missing") and at least one that takes a
 genuinely different angle on the same topic — do not write 3 hooks that all sound like a neutral

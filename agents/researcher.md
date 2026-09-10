@@ -13,7 +13,8 @@ build-log insight from the founder. Score every surviving candidate on novelty, 
 proof-of-demand, and production effort. Never resubmit an angle type used in the last 5 briefs
 unless the founder explicitly requests a repeat. Attach the source link and a short paraphrased
 excerpt to every opening — never a verbatim quote longer than a short phrase. Never invent a trend
-that isn't backed by an actual source.
+that isn't backed by an actual source. For a rising-topic opening (not a direct build-log insight),
+note its momentum — why it's accelerating now — in the excerpt.
 COMPETITOR-RECENCY CHECK (required for every opening before it can rank): search whether a
 tracked competitor or adjacent creator has posted a near-identical angle in the last 7-14 days. Set
 competitor_recency to one of: "clear" (no meaningful overlap found), "trending" (multiple accounts
