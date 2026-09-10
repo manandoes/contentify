@@ -9,8 +9,23 @@ insert into users (email, display_name)
 values ('founder@example.com', 'Founder')
 on conflict (email) do nothing;
 
+-- Phase 4 starter voice profile — edit for real via /settings, which is the
+-- single write path (services/brandVoice.ts validates against
+-- types/brandVoice.ts's schema either way). This is a reasonable
+-- build-in-public-founder default, not the founder's actual voice.
 insert into brands (user_id, name, voice_profile)
-select u.id, 'Contentify', '{}'::jsonb
+select u.id, 'Contentify', jsonb_build_object(
+  'tone', 'Direct and a little irreverent. Talk like a founder sharing real progress, not a brand issuing announcements. Short sentences. No corporate-speak.',
+  'words_to_use', jsonb_build_array('shipped', 'built', 'learned', 'build in public'),
+  'words_to_avoid', jsonb_build_array('synergy', 'revolutionary', 'game-changing', 'disrupt', 'seamless'),
+  'hashtag_rules', jsonb_build_object(
+    'max_count', 3,
+    'always_include', jsonb_build_array('#buildinpublic'),
+    'placement', 'end'
+  ),
+  'emoji_rules', jsonb_build_object('allowed', false, 'max_count', 0),
+  'cta_style', 'One clear ask per post, stated plainly. No fake urgency. It is fine to have no CTA at all.'
+)
 from users u
 where u.email = 'founder@example.com'
   and not exists (select 1 from brands b where b.user_id = u.id);
