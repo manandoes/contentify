@@ -1,17 +1,22 @@
 /**
- * Phase 5, stage 2 (Architecture.md §4 /api/content/generate). Runs the
- * Content Analyzer over one ingested `content` row and stores its output
- * in content.analysis. Architecture.md's folder plan has this same route
- * also run the platform adapters once Phase 6 builds them — today it only
- * runs analysis, matching Phase 5's scope in Phases.md.
+ * Phase 5+6 (Architecture.md §4 /api/content/generate: "runs analyzer +
+ * platform adapters" — one route, per that folder plan). Runs the Content
+ * Analyzer over one ingested `content` row, stores its output in
+ * content.analysis, then runs the Master Adaptation Agent (Phase 6) and
+ * upserts one content_versions row per platform (Instagram + LinkedIn —
+ * Phases.md: "start with 2, not 10"). content_versions.status is left at
+ * its DB default (DRAFT); Phase 9 owns the approval-status transitions.
  */
 import "server-only";
 import { NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { supabaseServer } from "@/lib/db";
 import { runAgent } from "@/lib/gemini";
+import { findMissingFacts } from "@/lib/factsPreserved";
+import { getBrandVoice } from "@/services/brandVoice";
 import { nextStepOrder, resolveRunId } from "@/services/orchestrator";
-import { contentAnalyzerOutputSchema } from "@/types/agents";
+import { contentAnalyzerOutputSchema, platformAdapterOutputSchema } from "@/types/agents";
+import { PLATFORM_RULES, type AdapterPlatform } from "@/types/platformRules";
 import type { Json } from "@/types/database";
 
 interface RequestBody {
@@ -34,7 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { data: content, error: contentError } = await db
     .from("content")
-    .select("id, title, original_content, content_type, goal, audience, cta")
+    .select("id, brand_id, title, original_content, content_type, goal, audience, cta")
     .eq("id", body.contentId)
     .maybeSingle();
 
@@ -79,5 +84,58 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: `Failed to save analysis for content ${content.id}: ${updateError.message}` }, { status: 500 });
   }
 
-  return NextResponse.json({ runId, contentId: content.id, analysis: output });
+  // Phase 6: Master Adaptation Agent. Rules.md §4 INPUT is "ORIGINAL
+  // CONTENT + CONTENT ANALYSIS + BRAND VOICE + PLATFORM RULES".
+  const { voiceProfile } = await getBrandVoice(content.brand_id, db);
+
+  const adapterInput: Json = {
+    original_content: {
+      title: content.title,
+      content: content.original_content,
+      goal: content.goal,
+      audience: content.audience,
+      cta: content.cta,
+    },
+    analysis: output as Json,
+    brand_voice: voiceProfile as unknown as Json,
+    platform_rules: PLATFORM_RULES as unknown as Json,
+  };
+
+  const adapterStepOrder = await nextStepOrder(db, runId);
+  const adapted = await runAgent({
+    runId,
+    agentName: "platformAdapter",
+    stepOrder: adapterStepOrder,
+    promptFile: "platformAdapter.md",
+    input: adapterInput,
+    schema: platformAdapterOutputSchema,
+  });
+
+  const platforms = Object.keys(PLATFORM_RULES) as AdapterPlatform[];
+  const versionRows = platforms.map((platform) => {
+    const version = adapted[platform];
+    // Rules.md §1.2 — flag, never silently drop, a fact the agent lost.
+    const missingFacts = findMissingFacts(output.facts_to_preserve, version);
+    const warnings = missingFacts.length
+      ? [...version.warnings, ...missingFacts.map((fact) => `facts_to_preserve missing verbatim: "${fact}"`)]
+      : version.warnings;
+
+    return {
+      content_id: content.id,
+      platform,
+      adapted_content: version as Json,
+      warnings,
+    };
+  });
+
+  const { data: versions, error: versionsError } = await db
+    .from("content_versions")
+    .upsert(versionRows, { onConflict: "content_id,platform" })
+    .select("id, platform, adapted_content, warnings, status");
+
+  if (versionsError) {
+    return NextResponse.json({ error: `Failed to save content_versions for content ${content.id}: ${versionsError.message}` }, { status: 500 });
+  }
+
+  return NextResponse.json({ runId, contentId: content.id, analysis: output, versions });
 }

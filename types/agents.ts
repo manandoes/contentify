@@ -74,3 +74,26 @@ export const contentAnalyzerOutputSchema = z.object({
   needs_clarification: z.array(z.string()).default([]),
 });
 export type ContentAnalyzerOutput = z.infer<typeof contentAnalyzerOutputSchema>;
+
+// Phase 6 Master Adaptation Agent (agents/platformAdapter.md). No hashtags
+// field here — Rules.md §4 gives hashtags/first_comment to the Caption
+// Agent (Phase 7), which reads this adapted content as its own input.
+const adaptedPlatformContentSchema = z.object({
+  suitable: z.boolean(),
+  reason_unsuitable: z.string().nullable().optional(),
+  hook: z.string(),
+  body: z.string(),
+  cta: z.string().nullable(),
+  structure_notes: z.string().optional(),
+  warnings: z.array(z.string()).default([]),
+});
+export type AdaptedPlatformContent = z.infer<typeof adaptedPlatformContentSchema>;
+
+// Fixed to instagram + linkedin (Phase 6 scope, Phases.md: "start with 2,
+// not 10"). Adding a platform later touches this and types/platformRules.ts
+// together — see that file's header comment.
+export const platformAdapterOutputSchema = z.object({
+  instagram: adaptedPlatformContentSchema,
+  linkedin: adaptedPlatformContentSchema,
+});
+export type PlatformAdapterOutput = z.infer<typeof platformAdapterOutputSchema>;
