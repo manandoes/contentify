@@ -35,3 +35,10 @@ export type ContentStatus = (typeof CONTENT_STATUSES)[number];
 
 export const COMPETITOR_RECENCY_VALUES = ["clear", "trending", "recently_covered"] as const;
 export type CompetitorRecency = (typeof COMPETITOR_RECENCY_VALUES)[number];
+
+// Phase 8 format engine (services/media.ts). Matches the comment on
+// content_assets.aspect_ratio in the Phase 1 migration exactly — that
+// column is plain `text`, not a Postgres enum, so this array is the only
+// place the set is enforced.
+export const ASPECT_RATIOS = ["4:5", "1:1", "9:16", "16:9", "2:3"] as const;
+export type AspectRatio = (typeof ASPECT_RATIOS)[number];
