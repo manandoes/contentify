@@ -97,3 +97,18 @@ export const platformAdapterOutputSchema = z.object({
   linkedin: adaptedPlatformContentSchema,
 });
 export type PlatformAdapterOutput = z.infer<typeof platformAdapterOutputSchema>;
+
+// Phase 7 Caption Agent (agents/captionAgent.md). Runs once per platform
+// version, reading that version's adapted_content as its own input.
+// Rules.md §4 ERROR BEHAVIOR: "if the content lacks a real CTA, return
+// cta: null and flag it" — the flag is this shared warnings[] pattern, same
+// as adaptedPlatformContentSchema above.
+export const captionAgentOutputSchema = z.object({
+  hook: z.string(),
+  body: z.string(),
+  cta: z.string().nullable(),
+  hashtags: z.array(z.string()).default([]),
+  first_comment: z.string().nullable(),
+  warnings: z.array(z.string()).default([]),
+});
+export type CaptionAgentOutput = z.infer<typeof captionAgentOutputSchema>;

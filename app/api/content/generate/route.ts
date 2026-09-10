@@ -1,11 +1,15 @@
 /**
- * Phase 5+6 (Architecture.md §4 /api/content/generate: "runs analyzer +
- * platform adapters" — one route, per that folder plan). Runs the Content
- * Analyzer over one ingested `content` row, stores its output in
- * content.analysis, then runs the Master Adaptation Agent (Phase 6) and
- * upserts one content_versions row per platform (Instagram + LinkedIn —
- * Phases.md: "start with 2, not 10"). content_versions.status is left at
- * its DB default (DRAFT); Phase 9 owns the approval-status transitions.
+ * Phase 5+6+7 (Architecture.md §4 /api/content/generate: "runs analyzer +
+ * platform adapters" — one route, per that folder plan; Implementationplan.md's
+ * repository layout has no separate caption route, so Phase 7 lands here
+ * too). Runs the Content Analyzer over one ingested `content` row, stores
+ * its output in content.analysis, then runs the Master Adaptation Agent
+ * (Phase 6) and upserts one content_versions row per platform (Instagram +
+ * LinkedIn — Phases.md: "start with 2, not 10"). Finally runs the Caption
+ * Agent (Phase 7) once per platform version, reading that version's own
+ * adapted_content, and saves its output to content_versions.caption.
+ * content_versions.status is left at its DB default (DRAFT); Phase 9 owns
+ * the approval-status transitions.
  */
 import "server-only";
 import { NextResponse } from "next/server";
@@ -15,7 +19,7 @@ import { runAgent } from "@/lib/gemini";
 import { findMissingFacts } from "@/lib/factsPreserved";
 import { getBrandVoice } from "@/services/brandVoice";
 import { nextStepOrder, resolveRunId } from "@/services/orchestrator";
-import { contentAnalyzerOutputSchema, platformAdapterOutputSchema } from "@/types/agents";
+import { captionAgentOutputSchema, contentAnalyzerOutputSchema, platformAdapterOutputSchema } from "@/types/agents";
 import { PLATFORM_RULES, type AdapterPlatform } from "@/types/platformRules";
 import type { Json } from "@/types/database";
 
@@ -137,5 +141,51 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: `Failed to save content_versions for content ${content.id}: ${versionsError.message}` }, { status: 500 });
   }
 
-  return NextResponse.json({ runId, contentId: content.id, analysis: output, versions });
+  // Phase 7: Caption Agent, once per platform version (sequential — same
+  // per-item loop pattern as app/api/ideas/hooks/route.ts — so
+  // agent_runs.step_order stays meaningful). Rules.md §4 INPUT is "platform,
+  // adapted content, brand voice, CTA, audience".
+  const finalVersions = [];
+  for (const version of versions ?? []) {
+    const captionInput: Json = {
+      platform: version.platform,
+      adapted_content: version.adapted_content,
+      brand_voice: voiceProfile as unknown as Json,
+      cta: content.cta,
+      audience: content.audience,
+    };
+
+    const captionStepOrder = await nextStepOrder(db, runId);
+    const caption = await runAgent({
+      runId,
+      agentName: "captionAgent",
+      stepOrder: captionStepOrder,
+      promptFile: "captionAgent.md",
+      input: captionInput,
+      schema: captionAgentOutputSchema,
+    });
+
+    const missingFacts = findMissingFacts(output.facts_to_preserve, caption);
+    const warnings = missingFacts.length
+      ? [...caption.warnings, ...missingFacts.map((fact) => `facts_to_preserve missing verbatim: "${fact}"`)]
+      : caption.warnings;
+
+    const { data: updated, error: captionError } = await db
+      .from("content_versions")
+      .update({ caption: caption as Json, warnings })
+      .eq("id", version.id)
+      .select("id, platform, adapted_content, caption, warnings, status")
+      .single();
+
+    if (captionError || !updated) {
+      return NextResponse.json(
+        { error: `Failed to save caption for content_version ${version.id}: ${captionError?.message}` },
+        { status: 500 },
+      );
+    }
+
+    finalVersions.push(updated);
+  }
+
+  return NextResponse.json({ runId, contentId: content.id, analysis: output, versions: finalVersions });
 }
