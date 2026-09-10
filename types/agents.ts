@@ -64,3 +64,13 @@ export const ideaFinalizerOutputSchema = z.object({
   needs_clarification: z.string().optional(),
 });
 export type IdeaFinalizerOutput = z.infer<typeof ideaFinalizerOutputSchema>;
+
+export const contentAnalyzerOutputSchema = z.object({
+  core_idea: z.string(),
+  hook: z.string(),
+  key_points: z.array(z.string()),
+  facts_to_preserve: z.array(z.string()),
+  visual_requirements: z.string(),
+  needs_clarification: z.array(z.string()).default([]),
+});
+export type ContentAnalyzerOutput = z.infer<typeof contentAnalyzerOutputSchema>;
