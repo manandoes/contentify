@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { isDecidable, isEditable } from "@/services/approvalWorkflow";
+import { isDecidable, isEditable, isSchedulable } from "@/services/approvalWorkflow";
 import type { AdaptedPlatformContent, CaptionAgentOutput } from "@/types/agents";
 import type { Database } from "@/types/database";
-import { decideVersion, editCaption, type CaptionEdit } from "./actions";
+import { decideVersion, editCaption, scheduleVersion, type CaptionEdit } from "./actions";
 
 type ContentVersion = Database["public"]["Tables"]["content_versions"]["Row"];
 type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
@@ -39,6 +39,7 @@ export function VersionCard({ version, badge }: { version: ContentVersion; badge
 
   const decidable = isDecidable(version.status);
   const editable = isEditable(version.status);
+  const schedulable = isSchedulable(version.status);
 
   function handleDecision(decision: "approve" | "reject") {
     startTransition(async () => {
@@ -92,8 +93,53 @@ export function VersionCard({ version, badge }: { version: ContentVersion; badge
           Reject
         </Button>
         <EditDialog version={version} caption={caption} open={editOpen} onOpenChange={setEditOpen} disabled={!editable || isPending} />
+        <ScheduleDialog versionId={version.id} disabled={!schedulable || isPending} />
       </div>
     </div>
+  );
+}
+
+function ScheduleDialog({ versionId, disabled }: { versionId: string; disabled: boolean }) {
+  const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [when, setWhen] = useState("");
+
+  function handleSchedule() {
+    if (!when) {
+      toast.error("Pick a date and time");
+      return;
+    }
+    startTransition(async () => {
+      const result = await scheduleVersion(versionId, when);
+      if (result.ok) {
+        toast.success("Scheduled");
+        setOpen(false);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" disabled={disabled} />}>Schedule</DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Schedule this version</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-1">
+          <Label htmlFor={`schedule-${versionId}`}>Date and time</Label>
+          <Input id={`schedule-${versionId}`} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+        </div>
+
+        <DialogFooter>
+          <Button onClick={handleSchedule} disabled={isPending}>
+            {isPending ? "Scheduling…" : "Schedule"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

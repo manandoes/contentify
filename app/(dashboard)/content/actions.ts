@@ -10,7 +10,16 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/db";
 import { GenerateError, runContentGenerate } from "@/services/contentGenerator";
-import { isDecidable, isEditable, isRegeneratable, statusAfterDecision, statusAfterEdit, type ReviewDecision } from "@/services/approvalWorkflow";
+import {
+  isDecidable,
+  isEditable,
+  isRegeneratable,
+  isSchedulable,
+  statusAfterDecision,
+  statusAfterEdit,
+  statusAfterSchedule,
+  type ReviewDecision,
+} from "@/services/approvalWorkflow";
 import type { CaptionAgentOutput } from "@/types/agents";
 import type { Json } from "@/types/database";
 
@@ -61,6 +70,43 @@ export async function editCaption(versionId: string, edit: CaptionEdit): Promise
   if (updateError) return { ok: false, error: updateError.message };
 
   revalidatePath("/content");
+  return { ok: true };
+}
+
+/**
+ * Phase 10's Schedule action. One scheduled_posts row per version — the
+ * version id doubles as the idempotency key (Rules.md §3: one key per
+ * scheduled post), which also makes scheduling the same version twice a
+ * unique-constraint error instead of a silent duplicate.
+ */
+export async function scheduleVersion(versionId: string, scheduledFor: string): Promise<ActionResult> {
+  const db = supabaseServer();
+
+  const when = new Date(scheduledFor);
+  if (Number.isNaN(when.getTime())) return { ok: false, error: "Pick a valid date and time" };
+
+  const { data: version, error } = await db.from("content_versions").select("status").eq("id", versionId).maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!version) return { ok: false, error: "That content version no longer exists" };
+  if (!isSchedulable(version.status)) {
+    return { ok: false, error: `Cannot schedule a version that is ${version.status} — approve it first` };
+  }
+
+  const { error: insertError } = await db.from("scheduled_posts").insert({
+    content_version_id: versionId,
+    scheduled_for: when.toISOString(),
+    idempotency_key: versionId,
+  });
+  if (insertError) return { ok: false, error: insertError.message };
+
+  const { error: updateError } = await db
+    .from("content_versions")
+    .update({ status: statusAfterSchedule() })
+    .eq("id", versionId);
+  if (updateError) return { ok: false, error: updateError.message };
+
+  revalidatePath("/content");
+  revalidatePath("/calendar");
   return { ok: true };
 }
 

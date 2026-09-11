@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isDecidable, isEditable, isRegeneratable, statusAfterDecision, statusAfterEdit } from "../services/approvalWorkflow.ts";
+import { isDecidable, isEditable, isRegeneratable, isSchedulable, statusAfterDecision, statusAfterEdit, statusAfterSchedule } from "../services/approvalWorkflow.ts";
 
 test("DRAFT and READY_FOR_REVIEW are decidable; everything else is not", () => {
   assert.equal(isDecidable("DRAFT"), true);
@@ -33,4 +33,15 @@ test("regenerate is blocked once a version is committed downstream", () => {
     assert.equal(isRegeneratable(status), false);
   }
   assert.equal(isRegeneratable("APPROVED"), true);
+});
+
+test("only an approved version is schedulable", () => {
+  assert.equal(isSchedulable("APPROVED"), true);
+  for (const status of ["DRAFT", "READY_FOR_REVIEW", "SCHEDULED", "PUBLISHED", "FAILED", "READY_TO_POST"] as const) {
+    assert.equal(isSchedulable(status), false);
+  }
+});
+
+test("scheduling maps to SCHEDULED", () => {
+  assert.equal(statusAfterSchedule(), "SCHEDULED");
 });

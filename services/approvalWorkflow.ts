@@ -17,6 +17,7 @@ import type { ContentStatus } from "@/types/enums";
 const DECIDABLE: ReadonlySet<ContentStatus> = new Set(["DRAFT", "READY_FOR_REVIEW"]);
 const EDITABLE: ReadonlySet<ContentStatus> = new Set(["DRAFT", "READY_FOR_REVIEW", "APPROVED", "FAILED"]);
 const REGENERATABLE: ReadonlySet<ContentStatus> = new Set(["DRAFT", "READY_FOR_REVIEW", "APPROVED", "FAILED"]);
+const SCHEDULABLE: ReadonlySet<ContentStatus> = new Set(["APPROVED"]);
 
 /** True for a version still awaiting its first Approve/Reject decision. */
 export function isDecidable(status: ContentStatus): boolean {
@@ -31,6 +32,16 @@ export function isEditable(status: ContentStatus): boolean {
 /** True for a version the generate pipeline may still safely overwrite. */
 export function isRegeneratable(status: ContentStatus): boolean {
   return REGENERATABLE.has(status);
+}
+
+/** True for a version a founder may hand a scheduled_for date (Phase 10). */
+export function isSchedulable(status: ContentStatus): boolean {
+  return SCHEDULABLE.has(status);
+}
+
+/** Result of the Schedule action. Callers must check isSchedulable() first. */
+export function statusAfterSchedule(): ContentStatus {
+  return "SCHEDULED";
 }
 
 export type ReviewDecision = "approve" | "reject";
