@@ -492,6 +492,7 @@ export type Database = {
           expires_at: string | null
           id: string
           platform: Database["public"]["Enums"]["platform"]
+          platform_account_id: string | null
           refresh_token_encrypted: string | null
           scopes: string[]
           status: string
@@ -505,6 +506,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           platform: Database["public"]["Enums"]["platform"]
+          platform_account_id?: string | null
           refresh_token_encrypted?: string | null
           scopes?: string[]
           status?: string
@@ -518,6 +520,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           platform?: Database["public"]["Enums"]["platform"]
+          platform_account_id?: string | null
           refresh_token_encrypted?: string | null
           scopes?: string[]
           status?: string

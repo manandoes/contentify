@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { isDecidable, isEditable, isSchedulable } from "@/services/approvalWorkflow";
+import { isDecidable, isEditable, isPublishable, isSchedulable } from "@/services/approvalWorkflow";
 import type { AdaptedPlatformContent, CaptionAgentOutput } from "@/types/agents";
 import type { Database } from "@/types/database";
-import { decideVersion, editCaption, scheduleVersion, type CaptionEdit } from "./actions";
+import { decideVersion, editCaption, publishNow, scheduleVersion, type CaptionEdit } from "./actions";
 
 type ContentVersion = Database["public"]["Tables"]["content_versions"]["Row"];
 type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
@@ -40,6 +40,17 @@ export function VersionCard({ version, badge }: { version: ContentVersion; badge
   const decidable = isDecidable(version.status);
   const editable = isEditable(version.status);
   const schedulable = isSchedulable(version.status);
+  const publishable = isPublishable(version.status);
+
+  // Phase 11: publish this scheduled post now rather than waiting for the
+  // cron pass to reach its scheduled time. Same server-side path either way.
+  function handlePublish() {
+    startTransition(async () => {
+      const result = await publishNow(version.id);
+      if (result.ok) toast.success("Published");
+      else toast.error(result.error);
+    });
+  }
 
   function handleDecision(decision: "approve" | "reject") {
     startTransition(async () => {
@@ -94,6 +105,11 @@ export function VersionCard({ version, badge }: { version: ContentVersion; badge
         </Button>
         <EditDialog version={version} caption={caption} open={editOpen} onOpenChange={setEditOpen} disabled={!editable || isPending} />
         <ScheduleDialog versionId={version.id} disabled={!schedulable || isPending} />
+        {publishable && (
+          <Button size="sm" disabled={isPending} onClick={handlePublish}>
+            {isPending ? "Publishing…" : "Publish now"}
+          </Button>
+        )}
       </div>
     </div>
   );

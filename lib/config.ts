@@ -22,6 +22,13 @@ const serverEnvSchema = z.object({
   GEMINI_MODEL: z.string().min(1),
   GEMINI_EMBEDDING_MODEL: z.string().min(1),
   CRON_SECRET: z.string().min(16, "CRON_SECRET must be a real secret, not a placeholder"),
+  // Phase 11: AES-256 key for lib/crypto.ts, which encrypts every OAuth
+  // token before it reaches platform_connections (Rules.md §1.6). Required,
+  // not optional — an unset key must fail at boot, never degrade into
+  // storing a token in plaintext. Generate with: openssl rand -hex 32
+  TOKEN_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "TOKEN_ENCRYPTION_KEY must be 64 hex characters (32 bytes) — generate with: openssl rand -hex 32"),
   ALLOWED_FOUNDER_EMAIL: z.email(),
   AUTO_PUBLISH: boolFromString,
   HUMAN_APPROVAL_REQUIRED: boolFromString,
@@ -32,6 +39,14 @@ const serverEnvSchema = z.object({
   // reddit.com/prefs/apps to get these.
   REDDIT_CLIENT_ID: z.string().min(1).optional(),
   REDDIT_CLIENT_SECRET: z.string().min(1).optional(),
+  // Optional as a group (Phase 11, same pattern as REDDIT_* above): with any
+  // of the three unset, connectors/linkedin reports itself unconfigured from
+  // validateConnection() instead of half-attempting an OAuth flow. The
+  // redirect URI is config rather than derived from the request because
+  // LinkedIn matches it byte-for-byte against the developer-portal value.
+  LINKEDIN_CLIENT_ID: z.string().min(1).optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().min(1).optional(),
+  LINKEDIN_REDIRECT_URI: z.url().optional(),
 });
 
 const publicEnvSchema = z.object({
@@ -67,11 +82,15 @@ const serverEnv = isServer
       GEMINI_MODEL: process.env.GEMINI_MODEL,
       GEMINI_EMBEDDING_MODEL: process.env.GEMINI_EMBEDDING_MODEL,
       CRON_SECRET: process.env.CRON_SECRET,
+      TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY,
       ALLOWED_FOUNDER_EMAIL: process.env.ALLOWED_FOUNDER_EMAIL,
       AUTO_PUBLISH: process.env.AUTO_PUBLISH,
       HUMAN_APPROVAL_REQUIRED: process.env.HUMAN_APPROVAL_REQUIRED,
       REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID,
       REDDIT_CLIENT_SECRET: process.env.REDDIT_CLIENT_SECRET,
+      LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID,
+      LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET,
+      LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI,
     })
   : null;
 
@@ -124,6 +143,20 @@ export const config = {
     get clientSecret() {
       return requireServer().REDDIT_CLIENT_SECRET;
     },
+  },
+  linkedin: {
+    get clientId() {
+      return requireServer().LINKEDIN_CLIENT_ID;
+    },
+    get clientSecret() {
+      return requireServer().LINKEDIN_CLIENT_SECRET;
+    },
+    get redirectUri() {
+      return requireServer().LINKEDIN_REDIRECT_URI;
+    },
+  },
+  get tokenEncryptionKey() {
+    return requireServer().TOKEN_ENCRYPTION_KEY;
   },
   auth: {
     get allowedFounderEmail() {

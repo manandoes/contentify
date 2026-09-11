@@ -1,0 +1,38 @@
+name: Publisher (due scheduled_posts)
+
+# Phase 11 — the runner behind Phase 10's calendar. Without this, a
+# SCHEDULED post has a date and nothing that acts on it.
+#
+# Every 15 minutes: fine-grained enough that a scheduled time is roughly
+# honoured, and it doubles as the retry pacing for queued failures —
+# services/publisher.ts leaves a retryable failure SCHEDULED with an
+# incremented attempt count, so the next pass is the next attempt, capped at
+# MAX_ATTEMPTS (Rules.md §3).
+#
+# Nothing here can publish something a human hasn't approved and scheduled:
+# the route delegates every gate to services/publisher.ts.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 11 verification
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/publish
+        run: |
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/publish" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/body.txt
+          if [ "$status" -ge 300 ]; then
+            echo "::error::publish route returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

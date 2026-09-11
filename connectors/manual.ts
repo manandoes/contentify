@@ -20,7 +20,7 @@ export function manualConnector(platform: Platform): PlatformConnector {
     },
 
     async getStatus(): Promise<PostStatus> {
-      return { status: "failed", error: "No publishing API — nothing to check status of." };
+      return { status: "unknown", reason: `${platform} has no publishing API — a manual post's status can't be read back.` };
     },
 
     async getAnalytics(): Promise<PlatformAnalytics> {

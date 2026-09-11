@@ -32,10 +32,27 @@ export interface PublishableContent {
 export type PublishResult =
   | { status: "PUBLISHED"; platformPostId: string; publishedAt: string }
   | { status: "READY_TO_POST"; reason: "NOT_SUPPORTED" }
-  | { status: "FAILED"; error: string };
+  /**
+   * `retryable` separates "this attempt failed, the next one might not"
+   * (platform 5xx, rate limit) from "this will fail identically forever"
+   * (caption too long, scope missing). Rules.md §3 requires different
+   * handling for each — back off and queue vs. mark FAILED now — so the
+   * connector, which is the only thing that saw the platform's response,
+   * is what decides. `retryAfterSeconds` carries a rate limiter's
+   * `retry-after` so the caller never has to guess at it.
+   */
+  | { status: "FAILED"; error: string; retryable?: boolean; retryAfterSeconds?: number };
 
+/**
+ * Architecture.md §6 names live / pending / failed. `unknown` is the fourth
+ * honest answer: some platforms gate *reading* a post behind a scope they
+ * won't grant for publishing (LinkedIn's r_member_social), and reporting a
+ * post we simply cannot see as "failed" would be exactly the kind of
+ * invented certainty Rules.md §1.3 forbids.
+ */
 export type PostStatus =
   | { status: "live" | "pending" }
+  | { status: "unknown"; reason: string }
   | { status: "failed"; error: string };
 
 export interface PlatformAnalytics {

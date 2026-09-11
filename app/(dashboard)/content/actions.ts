@@ -10,6 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/db";
 import { GenerateError, runContentGenerate } from "@/services/contentGenerator";
+import { publishScheduledPost } from "@/services/publisher";
 import {
   isDecidable,
   isEditable,
@@ -140,4 +141,50 @@ export async function regenerateContent(contentId: string): Promise<ActionResult
 
   revalidatePath("/content");
   return { ok: true };
+}
+
+/**
+ * Phase 11's "Publish now". The founder-facing counterpart to the
+ * /api/publish cron pass, and deliberately the same call underneath: every
+ * gate (human approval, duplicate protection, attempt cap) lives in
+ * services/publisher.ts, so this button cannot publish anything the cron
+ * couldn't, or skip a check by arriving from the UI instead.
+ *
+ * It publishes the scheduled post, not the version — a version reaches this
+ * state only by being approved and then scheduled, which is Rules.md §1.1's
+ * human gate.
+ */
+export async function publishNow(versionId: string): Promise<ActionResult> {
+  const db = supabaseServer();
+
+  const { data: scheduled, error } = await db
+    .from("scheduled_posts")
+    .select("id")
+    .eq("content_version_id", versionId)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!scheduled) return { ok: false, error: "This version isn't scheduled yet — schedule it first" };
+
+  let attempt;
+  try {
+    attempt = await publishScheduledPost(scheduled.id, db);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to publish" };
+  }
+
+  revalidatePath("/content");
+  revalidatePath("/calendar");
+
+  switch (attempt.outcome) {
+    case "PUBLISHED":
+      return { ok: true };
+    case "READY_TO_POST":
+      return { ok: false, error: attempt.reason };
+    case "RETRY_LATER":
+      return { ok: false, error: attempt.error };
+    case "SKIPPED":
+      return { ok: false, error: attempt.reason };
+    default:
+      return { ok: false, error: attempt.error };
+  }
 }
