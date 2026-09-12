@@ -23,6 +23,10 @@ export const researcherOutputSchema = z.object({
         evidence: z.array(evidenceItemSchema),
         competitor_recency: z.enum(COMPETITOR_RECENCY_VALUES),
         competitor_note: z.string().nullable().optional(),
+        // Phase 14: null unless a supplied content_memory match was actually
+        // similar enough to cite — never invent a performance history that
+        // wasn't given (Rules.md §4 shared rule: no invented stats/claims).
+        performance_note: z.string().nullable().optional(),
         score: z.object({
           novelty: z.number(),
           relevance: z.number(),
@@ -112,3 +116,24 @@ export const captionAgentOutputSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 export type CaptionAgentOutput = z.infer<typeof captionAgentOutputSchema>;
+
+// Phase 14 Performance Agent (agents/performanceAgent.md). Rules.md §4
+// OUTPUT FORMAT verbatim: observed/interpretation kept as separate objects
+// so a route or UI can never accidentally merge measured data with the
+// agent's own reading of it. confidence is free text (e.g. "low — only 3
+// posts") rather than a fixed enum, matching the prompt's own sample-size
+// rule rather than forcing a number the agent didn't actually compute.
+export const performanceAgentOutputSchema = z.object({
+  observed: z.object({
+    top_performers: z.array(z.string()),
+    low_performers: z.array(z.string()),
+    patterns: z.array(z.string()),
+  }),
+  interpretation: z.object({
+    possible_reasons: z.array(z.string()),
+    confidence: z.string(),
+  }),
+  recommendations: z.array(z.string()),
+  next_test: z.string().nullable(),
+});
+export type PerformanceAgentOutput = z.infer<typeof performanceAgentOutputSchema>;

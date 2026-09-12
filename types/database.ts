@@ -162,6 +162,7 @@ export type Database = {
           evidence: Json
           id: string
           opening: string
+          performance_note: string | null
           rank: number | null
           run_id: string
           score: Json
@@ -176,6 +177,7 @@ export type Database = {
           evidence?: Json
           id?: string
           opening: string
+          performance_note?: string | null
           rank?: number | null
           run_id: string
           score?: Json
@@ -190,6 +192,7 @@ export type Database = {
           evidence?: Json
           id?: string
           opening?: string
+          performance_note?: string | null
           rank?: number | null
           run_id?: string
           score?: Json
@@ -815,6 +818,20 @@ export type Database = {
     Functions: {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      // Phase 14 — supabase/migrations/20260912150000_phase14_content_memory.sql.
+      // query_embedding is passed as a pgvector text literal ("[0.1,0.2,...]"),
+      // same representation content_memory.embedding itself round-trips as.
+      match_content_memory: {
+        Args: { query_embedding: string; match_brand_id: string; match_count?: number }
+        Returns: {
+          id: string
+          content_id: string | null
+          topic_summary: string
+          angle_type: string | null
+          performance_score: number | null
+          similarity: number
+        }[]
+      }
     }
     Enums: {
       competitor_recency: "clear" | "trending" | "recently_covered"

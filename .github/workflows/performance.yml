@@ -1,0 +1,32 @@
+name: Performance Agent (weekly report)
+
+# Phase 14 — a low-volume, single-founder content stream doesn't produce
+# enough new posts for a daily re-analysis to say anything new (Rules.md
+# §4: "account for sample size — never draw conclusions from 2 posts").
+# Weekly keeps performance_reports meaningful without spamming Gemini calls
+# for no new signal.
+on:
+  schedule:
+    - cron: "17 15 * * 1" # Mondays, 15:17 UTC
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 14 verification
+
+jobs:
+  performance-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/performance
+        run: |
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/performance" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/body.txt
+          if [ "$status" -ge 300 ]; then
+            echo "::error::performance route returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

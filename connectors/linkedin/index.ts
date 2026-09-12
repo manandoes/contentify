@@ -36,8 +36,10 @@ import type {
   PublishResult,
 } from "../base";
 import type { OAuthFlow } from "../oauthFlow";
+import { networkErrorResult } from "../networkFailure.ts";
 import { buildCommentary } from "./commentary";
 import { REQUIRED_SCOPES, authorizationUrl, exchangeCode, fetchMemberUrn, linkedInAppConfig, refreshTokens } from "./oauth";
+import { classifyLinkedInFailure, linkedInExpiryState } from "./publishFailure.ts";
 
 const NOT_CONFIGURED = "LinkedIn is not configured — set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_REDIRECT_URI.";
 
@@ -93,22 +95,9 @@ class PublishFailure extends Error {
  */
 async function failureFrom(response: Response, db: SupabaseClient<Database>): Promise<PublishFailure> {
   const detail = await describeError(response);
-
-  if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("retry-after"));
-    return new PublishFailure(
-      `LinkedIn rate limit hit: ${detail}`,
-      true,
-      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
-    );
-  }
-
-  if (response.status === 401) {
-    await markBroken("linkedin", db);
-    return new PublishFailure(`LinkedIn rejected the access token: ${detail}. Reconnect LinkedIn in Settings.`, false);
-  }
-
-  return new PublishFailure(`LinkedIn API error: ${detail}`, response.status >= 500);
+  const classification = classifyLinkedInFailure(response.status, detail, response.headers.get("retry-after"));
+  if (classification.broken) await markBroken("linkedin", db);
+  return new PublishFailure(classification.message, classification.retryable, classification.retryAfterSeconds);
 }
 
 /**
@@ -126,9 +115,7 @@ async function freshCredentials(db: SupabaseClient<Database>): Promise<PlatformC
   if (!credentials) throw new Error("LinkedIn is not connected — connect it in Settings.");
   if (credentials.state === "broken") throw new Error("The LinkedIn connection is broken — reconnect it in Settings.");
 
-  const expiresAt = credentials.expiresAt ? Date.parse(credentials.expiresAt) : null;
-  const expiringSoon = expiresAt !== null && expiresAt - Date.now() < REFRESH_WINDOW_MS;
-  if (!expiringSoon) return credentials;
+  if (linkedInExpiryState(credentials.expiresAt, Date.now(), REFRESH_WINDOW_MS) === "fresh") return credentials;
 
   if (!credentials.refreshToken) {
     await markBroken("linkedin", db);
@@ -307,16 +294,7 @@ export function linkedinConnector(db: SupabaseClient<Database> = supabaseServer(
         if (error instanceof PublishFailure) {
           return { status: "FAILED", error: error.message, retryable: error.retryable, retryAfterSeconds: error.retryAfterSeconds };
         }
-        // The request never completed, so whether LinkedIn created the post
-        // is genuinely unknown — and with no platform-side idempotency,
-        // retrying blindly could double-post. Rules.md §3 says confirm the
-        // previous attempt's real outcome first, so this is not retryable:
-        // the founder checks the feed and decides.
-        return {
-          status: "FAILED",
-          error: `Could not reach LinkedIn (${(error as Error).message}) — check the LinkedIn feed before retrying, the post may or may not have gone out.`,
-          retryable: false,
-        };
+        return networkErrorResult("LinkedIn", error);
       }
     },
 

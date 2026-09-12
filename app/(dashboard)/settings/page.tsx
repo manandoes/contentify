@@ -1,4 +1,7 @@
 import "server-only";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { config } from "@/lib/config";
 import { getBrandVoice } from "@/services/brandVoice";
 import { listConnections } from "@/services/platformConnections";
 import { VoiceProfileForm } from "./voice-profile-form";
@@ -20,6 +23,45 @@ const CONNECTABLE: ConnectablePlatform[] = [
   { platform: "linkedin", label: "LinkedIn", startPath: "/api/connections/linkedin/start" },
   { platform: "instagram", label: "Instagram", startPath: "/api/connections/instagram/start" },
 ];
+
+/**
+ * Phase 17 — lets the founder confirm the Rules.md §1.1 safety gate for
+ * *this* deployment without digging through Vercel's env var UI. Read-only:
+ * these two vars must never be silently changed by the AI, so there is no
+ * toggle here, only the truth of what's currently deployed.
+ */
+function SafetyGate() {
+  const autoPublish = config.autoPublish;
+  const approvalRequired = config.humanApprovalRequired;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Publishing safety</CardTitle>
+        <CardDescription>
+          Rules.md §1.1: nothing publishes without your approval. This reads AUTO_PUBLISH and
+          HUMAN_APPROVAL_REQUIRED directly from this deployment&apos;s environment.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <span>Auto-publish</span>
+          <Badge variant={autoPublish ? "destructive" : "outline"}>{autoPublish ? "ON" : "OFF"}</Badge>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <span>Human approval required</span>
+          <Badge variant={approvalRequired ? "default" : "destructive"}>{approvalRequired ? "ON" : "OFF"}</Badge>
+        </div>
+        {autoPublish && (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-destructive">
+            Auto-publish is on for this deployment — content can go out the moment it&apos;s scheduled, with
+            no approval click in between. The recommended default is off.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default async function SettingsPage({
   searchParams,
@@ -49,6 +91,7 @@ export default async function SettingsPage({
         </p>
       )}
 
+      <SafetyGate />
       <PlatformConnections connectable={CONNECTABLE} connections={connections} />
       <VoiceProfileForm brandId={brandId} initialProfile={voiceProfile} />
     </div>

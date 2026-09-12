@@ -40,6 +40,30 @@ function client(): GoogleGenAI {
 }
 
 /**
+ * Phase 14 — the one place content_memory embeddings are computed, same
+ * reasoning as runAgent() being the one place agent prompts are sent:
+ * exactly one file owns the GoogleGenAI client. outputDimensionality is
+ * pinned to 768 to match content_memory.embedding's fixed vector(768)
+ * column (Phase 1 migration) — GEMINI_EMBEDDING_MODEL defaults to a larger
+ * native dimensionality, so this must be explicit, not assumed.
+ *
+ * Returns one embedding per input text, same order — null at an index only
+ * if Gemini's response is missing that embedding outright (never fabricated).
+ */
+export async function embedTexts(texts: string[]): Promise<(number[] | null)[]> {
+  if (texts.length === 0) return [];
+
+  const response = await client().models.embedContent({
+    model: config.gemini.embeddingModel,
+    contents: texts,
+    config: { outputDimensionality: 768 },
+  });
+
+  const embeddings = response.embeddings ?? [];
+  return texts.map((_, i) => embeddings[i]?.values ?? null);
+}
+
+/**
  * Thrown when an agent's output fails schema validation twice in a row
  * (once, then once more after a stricter instruction). Per Rules.md §3
  * this means "flag for manual review" — the caller (a route handler)

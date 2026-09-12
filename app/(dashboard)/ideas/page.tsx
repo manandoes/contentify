@@ -82,6 +82,13 @@ export default async function IdeasPage() {
                   </p>
                 )}
 
+                {brief.performance_note && (
+                  <p className="text-muted-foreground">
+                    <span className="font-medium text-foreground">Past performance: </span>
+                    {brief.performance_note}
+                  </p>
+                )}
+
                 {score && (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
                     <span>Novelty {score.novelty}</span>

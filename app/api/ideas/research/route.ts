@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { supabaseServer } from "@/lib/db";
 import { runAgent } from "@/lib/gemini";
+import { findRelatedMemories } from "@/services/contentMemory";
 import { getBrandId, nextStepOrder, resolveRunId } from "@/services/orchestrator";
 import { researcherOutputSchema } from "@/types/agents";
 import type { Json } from "@/types/database";
@@ -19,6 +20,11 @@ const GENERAL_SIGNALS_WINDOW_MS = 48 * 60 * 60 * 1000;
 const COMPETITOR_SIGNALS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const GENERAL_SIGNALS_LIMIT = 150;
 const COOLDOWN_BRIEF_COUNT = 5;
+// Phase 14: how many of today's highest-engagement signals stand in for
+// "what this run is about" when the founder didn't write build-log notes —
+// keeps the content_memory query to one embedding call regardless of how
+// many signals were collected (see findRelatedMemories's own header).
+const MEMORY_QUERY_SIGNAL_COUNT = 15;
 
 interface RequestBody {
   runId?: string;
@@ -71,12 +77,33 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
+  // Phase 14: repoints part of the cooldown check from a flat "last 5
+  // angle_types" list to real semantic history. The query text is the
+  // build-log notes when the founder wrote any, else today's highest-
+  // engagement signal titles — either way, one embedding call, not one per
+  // signal.
+  const memoryQueryText =
+    buildLogNotes.trim() ||
+    [...(generalSignals.data ?? [])]
+      .sort((a, b) => (b.engagement_score ?? 0) - (a.engagement_score ?? 0))
+      .slice(0, MEMORY_QUERY_SIGNAL_COUNT)
+      .map((signal) => signal.title)
+      .join("\n");
+
+  const relatedMemories = await findRelatedMemories(db, brandId, memoryQueryText);
+
   const input: Json = {
     build_log_notes: buildLogNotes,
     general_signals: generalSignals.data ?? [],
     competitor_signals: competitorSignals.data ?? [],
     tracked_competitors: competitors.data ?? [],
     cooldown_angle_types: (cooldownBriefs.data ?? []).map((b) => b.angle_type),
+    content_memory: relatedMemories.map((memory) => ({
+      topic_summary: memory.topicSummary,
+      angle_type: memory.angleType,
+      performance_score: memory.performanceScore,
+      similarity: memory.similarity,
+    })),
   };
 
   const stepOrder = await nextStepOrder(db, runId);
@@ -102,6 +129,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     evidence: opening.evidence as Json,
     competitor_recency: opening.competitor_recency,
     competitor_note: opening.competitor_note ?? null,
+    performance_note: opening.performance_note ?? null,
     score: opening.score as Json,
     rank: opening.rank,
     status: "promoted",

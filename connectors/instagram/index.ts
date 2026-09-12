@@ -41,6 +41,8 @@ import type {
 } from "../base";
 import { assembleCaption } from "../captionText.ts";
 import type { OAuthFlow } from "../oauthFlow";
+import { networkErrorResult } from "../networkFailure.ts";
+import { classifyContainerStatus, classifyInstagramFailure, instagramExpiryState } from "./publishFailure.ts";
 import {
   GRAPH_BASE_URL,
   INSIGHTS_SCOPE,
@@ -104,33 +106,11 @@ async function readError(response: Response): Promise<{ detail: string; code: nu
   return { detail: fallback, code: null };
 }
 
-/**
- * Rules.md §3, three rows at once. Meta signals rate limiting with its own
- * error codes (4 = app-level, 17 = user-level, 32/613 = page/call-count) far
- * more often than with HTTP 429, so the code is what's checked, not just the
- * status. 190 is "token invalid or expired", which is terminal for this
- * attempt — the connection is marked broken and the founder re-auths.
- */
-const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
-
 async function failureFrom(response: Response, db: SupabaseClient<Database>): Promise<PublishFailure> {
   const { detail, code } = await readError(response);
-
-  if (response.status === 429 || (code !== null && RATE_LIMIT_CODES.has(code))) {
-    const retryAfter = Number(response.headers.get("retry-after"));
-    return new PublishFailure(
-      `Instagram rate limit hit: ${detail}`,
-      true,
-      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
-    );
-  }
-
-  if (response.status === 401 || code === 190) {
-    await markBroken("instagram", db);
-    return new PublishFailure(`Instagram rejected the access token: ${detail}. Reconnect Instagram in Settings.`, false);
-  }
-
-  return new PublishFailure(`Instagram API error: ${detail}`, response.status >= 500);
+  const classification = classifyInstagramFailure(response.status, code, detail, response.headers.get("retry-after"));
+  if (classification.broken) await markBroken("instagram", db);
+  return new PublishFailure(classification.message, classification.retryable, classification.retryAfterSeconds);
 }
 
 /**
@@ -146,10 +126,10 @@ async function freshCredentials(db: SupabaseClient<Database>): Promise<PlatformC
   if (!credentials) throw new Error("Instagram is not connected — connect it in Settings.");
   if (credentials.state === "broken") throw new Error("The Instagram connection is broken — reconnect it in Settings.");
 
-  const expiresAt = credentials.expiresAt ? Date.parse(credentials.expiresAt) : null;
-  if (expiresAt === null || expiresAt - Date.now() >= REFRESH_WINDOW_MS) return credentials;
+  const expiryState = instagramExpiryState(credentials.expiresAt, Date.now(), REFRESH_WINDOW_MS);
+  if (expiryState === "fresh") return credentials;
 
-  if (expiresAt <= Date.now()) {
+  if (expiryState === "unrecoverable") {
     // Past expiry there is nothing left to refresh — Instagram only extends a
     // token that is still alive. Re-auth is the only way forward, so say so.
     await markBroken("instagram", db);
@@ -216,19 +196,17 @@ async function awaitContainerReady(
       status?: string;
     };
 
-    switch (statusCode) {
-      case "FINISHED":
+    const outcome = classifyContainerStatus(statusCode, status);
+    switch (outcome.kind) {
+      case "ready":
         return;
-      case "ERROR":
+      case "error":
         // Terminal: Instagram could not process this image, and the same
         // image will fail identically next time.
-        throw new PublishFailure(
-          `Instagram could not process the image for this post${status ? ` (${status})` : ""}. Check the media and try again.`,
-          false,
-        );
-      case "EXPIRED":
+        throw new PublishFailure(outcome.message, false);
+      case "expired":
         throw new PublishFailure("The Instagram upload expired before it could be published.", true);
-      default:
+      case "waiting":
         await wait(CONTAINER_POLL_DELAY_MS);
     }
   }
@@ -360,15 +338,7 @@ export function instagramConnector(db: SupabaseClient<Database> = supabaseServer
         if (error instanceof PublishFailure) {
           return { status: "FAILED", error: error.message, retryable: error.retryable, retryAfterSeconds: error.retryAfterSeconds };
         }
-        // The request never completed. Whether Instagram published is
-        // genuinely unknown, and with no platform-side idempotency a blind
-        // retry could double-post, so Rules.md §3's "confirm the previous
-        // attempt's outcome first" applies: not retryable, the founder looks.
-        return {
-          status: "FAILED",
-          error: `Could not reach Instagram (${(error as Error).message}) — check the Instagram feed before retrying, the post may or may not have gone out.`,
-          retryable: false,
-        };
+        return networkErrorResult("Instagram", error);
       }
     },
 

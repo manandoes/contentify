@@ -1,0 +1,31 @@
+name: Content memory sync (embeddings + performance_score)
+
+# Phase 14 — keeps content_memory current so the Researcher's cooldown can
+# read real history instead of only the last 5 briefs.angle_type. Every 6
+# hours, offset from analytics.yml so content_memory sees that run's
+# metrics rather than racing it.
+on:
+  schedule:
+    - cron: "37 */6 * * *"
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 14 verification
+
+jobs:
+  content-memory-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/content-memory/sync
+        run: |
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/content-memory/sync" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/body.txt
+          if [ "$status" -ge 300 ]; then
+            echo "::error::content-memory sync returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
