@@ -9,12 +9,16 @@ import { PlatformConnections, type ConnectablePlatform } from "./platform-connec
 export const dynamic = "force-dynamic";
 
 /**
- * Phase 11 ships one connector (Phases.md: "Pick one platform ... before
- * scaling to more"), so one entry. Phase 12 adds a line per platform here
- * and a case to connectors/index.ts — nothing else.
+ * Only platforms with a real connector. The rest have no publishing API to
+ * connect to and are posted by hand from the export pack, so offering them a
+ * Connect button would promise something that doesn't exist (Rules.md §1.3).
+ *
+ * Adding a platform is a line here and a case in connectors/index.ts —
+ * nothing else.
  */
 const CONNECTABLE: ConnectablePlatform[] = [
   { platform: "linkedin", label: "LinkedIn", startPath: "/api/connections/linkedin/start" },
+  { platform: "instagram", label: "Instagram", startPath: "/api/connections/instagram/start" },
 ];
 
 export default async function SettingsPage({

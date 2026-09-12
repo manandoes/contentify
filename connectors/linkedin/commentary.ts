@@ -6,6 +6,10 @@
  * reason as services/approvalWorkflow.ts: the escaping rule is exact,
  * easy to get subtly wrong, and worth unit-testing on its own.
  *
+ * What is LinkedIn-specific is only the escaping and the hashtag syntax
+ * below; the hook/body/CTA/hashtags assembly order is shared with every
+ * other platform and lives in connectors/captionText.ts.
+ *
  * Two rules from LinkedIn's little Text Format reference, verified during
  * this build:
  *  1. Every reserved character must be escaped with a backslash, "even if
@@ -17,6 +21,8 @@
  *     The brand's hashtag rules (Phase 4) exist to produce working hashtags,
  *     so they go through the template.
  */
+
+import { assembleCaption, type CaptionBlocks } from "../captionText.ts";
 
 /** `\ | { } @ [ ] ( ) < > # * _ ~` — backslash first so escapes aren't re-escaped. */
 const RESERVED = /[\\|{}@[\]()<>#*_~]/g;
@@ -32,12 +38,7 @@ export function hashtagTemplate(tag: string): string | null {
   return `{hashtag|\\#|${escapeLittleText(value)}}`;
 }
 
-export interface CommentaryCaption {
-  hook: string;
-  body: string;
-  cta: string | null;
-  hashtags: string[];
-}
+export type CommentaryCaption = CaptionBlocks;
 
 /**
  * Blocks are joined with a blank line: LinkedIn collapses nothing, so this is
@@ -46,15 +47,5 @@ export interface CommentaryCaption {
  * included — it is a separate comment on the published post, not part of it.
  */
 export function buildCommentary(caption: CommentaryCaption): string {
-  const hashtags = caption.hashtags.map(hashtagTemplate).filter((tag): tag is string => tag !== null);
-
-  return [
-    escapeLittleText(caption.hook),
-    escapeLittleText(caption.body),
-    caption.cta ? escapeLittleText(caption.cta) : "",
-    hashtags.join(" "),
-  ]
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  return assembleCaption(caption, { escape: escapeLittleText, hashtag: hashtagTemplate });
 }

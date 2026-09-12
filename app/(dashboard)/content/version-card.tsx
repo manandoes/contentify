@@ -110,6 +110,16 @@ export function VersionCard({ version, badge }: { version: ContentVersion; badge
             {isPending ? "Publishing…" : "Publish now"}
           </Button>
         )}
+        {/* Phase 12: the manual pack — caption, first comment and every crop
+            in one text file. Offered whenever there is a caption, not only
+            for READY_TO_POST: posting by hand must never depend on the
+            automated path having failed first. A plain link, not an action,
+            because it downloads a file. */}
+        {caption && (
+          <Button size="sm" variant="outline" render={<a href={`/api/content/${version.id}/export`} />}>
+            Export pack
+          </Button>
+        )}
       </div>
     </div>
   );

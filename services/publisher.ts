@@ -22,6 +22,7 @@ import type { PublishableContent, PublishResult } from "@/connectors/base";
 import type { CaptionAgentOutput } from "@/types/agents";
 import type { Database } from "@/types/database";
 import type { ContentStatus } from "@/types/enums";
+import { PLATFORM_ASPECT_RATIO } from "@/types/platformRules";
 
 /** Signed-URL lifetime for media handed to a connector. Long enough for one upload, short enough not to linger. */
 const MEDIA_URL_TTL_SECONDS = 600;
@@ -56,11 +57,6 @@ const SCHEDULED_POST_SELECT =
  * (Phase 8 migration) and connectors have no business knowing about Supabase
  * Storage.
  */
-const PLATFORM_ASPECT_RATIO: Partial<Record<Database["public"]["Enums"]["platform"], string>> = {
-  linkedin: "1:1",
-  instagram: "4:5",
-};
-
 async function mediaUrlsFor(
   db: SupabaseClient<Database>,
   contentId: string,

@@ -35,8 +35,11 @@ import type {
   PublishableContent,
   PublishResult,
 } from "../base";
+import type { OAuthFlow } from "../oauthFlow";
 import { buildCommentary } from "./commentary";
-import { REQUIRED_SCOPES, exchangeCode, fetchMemberUrn, linkedInAppConfig, refreshTokens } from "./oauth";
+import { REQUIRED_SCOPES, authorizationUrl, exchangeCode, fetchMemberUrn, linkedInAppConfig, refreshTokens } from "./oauth";
+
+const NOT_CONFIGURED = "LinkedIn is not configured — set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_REDIRECT_URI.";
 
 const API_BASE = "https://api.linkedin.com";
 /**
@@ -117,7 +120,7 @@ async function failureFrom(response: Response, db: SupabaseClient<Database>): Pr
  */
 async function freshCredentials(db: SupabaseClient<Database>): Promise<PlatformCredentials> {
   const app = linkedInAppConfig();
-  if (!app) throw new Error("LinkedIn is not configured — set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_REDIRECT_URI.");
+  if (!app) throw new Error(NOT_CONFIGURED);
 
   const credentials = await getCredentials("linkedin", db);
   if (!credentials) throw new Error("LinkedIn is not connected — connect it in Settings.");
@@ -196,7 +199,7 @@ export function linkedinConnector(db: SupabaseClient<Database> = supabaseServer(
      */
     async validateConnection(): Promise<ConnectionStatus> {
       if (!linkedInAppConfig()) {
-        return { ok: false, reason: "LinkedIn is not configured — set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_REDIRECT_URI." };
+        return { ok: false, reason: NOT_CONFIGURED };
       }
 
       let credentials: PlatformCredentials;
@@ -385,7 +388,7 @@ export function linkedinConnector(db: SupabaseClient<Database> = supabaseServer(
  */
 export async function completeLinkedInConnection(code: string, db: SupabaseClient<Database> = supabaseServer()): Promise<void> {
   const app = linkedInAppConfig();
-  if (!app) throw new Error("LinkedIn is not configured — set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and LINKEDIN_REDIRECT_URI.");
+  if (!app) throw new Error(NOT_CONFIGURED);
 
   const tokens = await exchangeCode(app, code);
 
@@ -408,3 +411,15 @@ export async function completeLinkedInConnection(code: string, db: SupabaseClien
     db,
   );
 }
+
+/** The browser OAuth flow, handed to the shared start/callback routes. */
+export const linkedInOAuthFlow: OAuthFlow = {
+  platform: "linkedin",
+  label: "LinkedIn",
+  notConfigured: NOT_CONFIGURED,
+  authorizationUrl(state) {
+    const app = linkedInAppConfig();
+    return app ? authorizationUrl(app, state) : null;
+  },
+  complete: (code) => completeLinkedInConnection(code),
+};

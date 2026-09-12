@@ -47,6 +47,13 @@ const serverEnvSchema = z.object({
   LINKEDIN_CLIENT_ID: z.string().min(1).optional(),
   LINKEDIN_CLIENT_SECRET: z.string().min(1).optional(),
   LINKEDIN_REDIRECT_URI: z.url().optional(),
+  // Optional as a group (Phase 12, same pattern as LINKEDIN_* above). The
+  // Instagram app is the Meta app's "Instagram" product with Business Login
+  // configured; the redirect URI must be HTTPS — Instagram rejects plain
+  // HTTP — and match the dashboard value byte-for-byte.
+  INSTAGRAM_CLIENT_ID: z.string().min(1).optional(),
+  INSTAGRAM_CLIENT_SECRET: z.string().min(1).optional(),
+  INSTAGRAM_REDIRECT_URI: z.url().startsWith("https://", "INSTAGRAM_REDIRECT_URI must be an https URL").optional(),
 });
 
 const publicEnvSchema = z.object({
@@ -91,6 +98,9 @@ const serverEnv = isServer
       LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID,
       LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET,
       LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI,
+      INSTAGRAM_CLIENT_ID: process.env.INSTAGRAM_CLIENT_ID,
+      INSTAGRAM_CLIENT_SECRET: process.env.INSTAGRAM_CLIENT_SECRET,
+      INSTAGRAM_REDIRECT_URI: process.env.INSTAGRAM_REDIRECT_URI,
     })
   : null;
 
@@ -153,6 +163,17 @@ export const config = {
     },
     get redirectUri() {
       return requireServer().LINKEDIN_REDIRECT_URI;
+    },
+  },
+  instagram: {
+    get clientId() {
+      return requireServer().INSTAGRAM_CLIENT_ID;
+    },
+    get clientSecret() {
+      return requireServer().INSTAGRAM_CLIENT_SECRET;
+    },
+    get redirectUri() {
+      return requireServer().INSTAGRAM_REDIRECT_URI;
     },
   },
   get tokenEncryptionKey() {
