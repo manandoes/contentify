@@ -1,0 +1,35 @@
+name: Analytics (published_posts metrics)
+
+# Phase 13 — pulls whatever each platform actually exposes for every real
+# published post (Architecture.md §1). Every 6 hours: metrics don't shift
+# fast enough to need publish.yml's 15-minute cadence, and it keeps this off
+# the top of the hour.
+#
+# Nothing here decides what a metric means — services/analytics.ts stores
+# exactly what each connector's getAnalytics() returns, null included
+# (Rules.md §4: never guess).
+on:
+  schedule:
+    - cron: "13 */6 * * *"
+  workflow_dispatch: {} # manual trigger, e.g. for Phase 13 verification
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/analytics
+        run: |
+          status=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST "${APP_URL}/api/analytics" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $status"
+          cat /tmp/body.txt
+          if [ "$status" -ge 300 ]; then
+            echo "::error::analytics route returned $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
